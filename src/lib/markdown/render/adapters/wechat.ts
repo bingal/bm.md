@@ -10,8 +10,22 @@ interface FootnoteLink {
   text: string
 }
 
-const WECHAT_ARTICLE_RE = /^https?:\/\/mp\.weixin\.qq\.com/i
-const EXTERNAL_LINK_RE = /^(?:https?:\/\/|mailto:|tel:)/i
+function isWechatArticleUrl(href: string): boolean {
+  try {
+    const url = new URL(href, 'https://placeholder.com')
+    return url.hostname === 'mp.weixin.qq.com'
+  }
+  catch {
+    return false
+  }
+}
+
+function shouldSkipFootnote(href: string): boolean {
+  return href.startsWith('#')
+    || href.startsWith('/')
+    || href.startsWith('./')
+    || href.startsWith('../')
+}
 
 function isElement(node: unknown): node is Element {
   return !!node && typeof node === 'object' && (node as Element).type === 'element'
@@ -203,11 +217,31 @@ const rehypeWechatFootnoteLinks: Plugin<[], Root> = () => (tree) => {
       return
     }
 
-    const href = node.properties?.href
-    if (typeof href !== 'string' || !EXTERNAL_LINK_RE.test(href)) {
+    const rawHref = node.properties?.href
+    if (typeof rawHref !== 'string') {
       return
     }
-    if (WECHAT_ARTICLE_RE.test(href)) {
+
+    const href = rawHref.trim()
+
+    if (!href) {
+      node.tagName = 'span'
+      delete node.properties?.href
+      delete node.properties?.target
+      delete node.properties?.rel
+      return
+    }
+
+    if (isWechatArticleUrl(href)) {
+      return
+    }
+
+    node.tagName = 'span'
+    delete node.properties?.href
+    delete node.properties?.target
+    delete node.properties?.rel
+
+    if (shouldSkipFootnote(href)) {
       return
     }
 
@@ -217,11 +251,6 @@ const rehypeWechatFootnoteLinks: Plugin<[], Root> = () => (tree) => {
       hrefToId.set(href, id)
       links.push({ id, href, text: extractLinkText(node) })
     }
-
-    node.tagName = 'span'
-    delete node.properties?.href
-    delete node.properties?.target
-    delete node.properties?.rel
 
     parent.children.splice(index + 1, 0, {
       type: 'element',
